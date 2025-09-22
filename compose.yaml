@@ -1,0 +1,51 @@
+services:
+  app:
+    container_name: ridequest_app
+    image: ridequest_app:local
+    build:
+      context: ./app
+    ports:
+      - "5173:5173"
+    expose:
+      - "5173"
+    volumes:
+      - ./app/src:/app/src
+    depends_on:
+      # api:
+      #  condition: service_healthy
+      db:
+        condition: service_healthy
+
+  api:
+    container_name: ridequest_api
+    image: ridequest_api:local
+    build:
+      context: ./api
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./api/src:/api/src
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    container_name: ridequest_db
+    image: postgres:17.6-alpine3.22
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -h, localhost, -p, "5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  db:
