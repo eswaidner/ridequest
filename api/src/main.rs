@@ -13,6 +13,7 @@ use axum::{
 use axum_extra::extract::{CookieJar, cookie::Cookie};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{from_str, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
@@ -85,10 +86,38 @@ async fn login_handler(
     jar: CookieJar,
     Json(body): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    //TODO if auth_code, get tokens from strava
-
     if let Some(auth_code) = body.auth_code {
         println!("AUTH CODE: {}", auth_code);
+
+        let client = reqwest::Client::new();
+
+        let client_id =
+            from_str::<i32>(&std::env::var("STRAVA_CLIENT_ID").expect("CLIENT_ID is unset"))
+                .unwrap();
+
+        let body = json!({
+            "client_id": client_id,
+            "client_secret": std::env::var("STRAVA_CLIENT_SECRET").expect("CLIENT_SECRET is unset"),
+            "code": auth_code,
+            "grant_type": "authorization_code",
+        });
+
+        let resp = client
+            .post("https://www.strava.com/api/v3/oauth/token")
+            .json(&body)
+            .send()
+            .await
+            .expect("failed to get tokens from strava");
+
+        if resp.status().is_success() {
+            let resp_json: serde_json::Value = resp.json().await.unwrap();
+            println!("STRAVA: {}", resp_json);
+        } else {
+            if let Err(e) = resp.error_for_status() {
+                eprintln!("STRAVA ERROR: {}", e);
+            }
+        }
+
         //TODO get or create session in db
     } else {
         //TODO get session in db

@@ -23,6 +23,9 @@ export default function App() {
       if (elems[0] == "code") authCode = elems[1];
     }
 
+    // reset the url display
+    window.history.replaceState(null, "home", window.location.hostname);
+
     const login = async () => {
       if (!authCode) return;
 
