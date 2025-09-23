@@ -31,6 +31,7 @@ services:
       - ./api/src:/api/src
     environment:
       STRAVA_CLIENT_ID: ${VITE_STRAVA_CLIENT_ID}
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_DATABASE}
       #TODO other env vars
     depends_on:
       db:
@@ -38,8 +39,8 @@ services:
     healthcheck:
       test: [CMD, curl, -s, -f, "http://localhost:5174/api/v1/healthcheck"]
       interval: 5s
-      timeout: 10s
-      retries: 3
+      timeout: 50s
+      retries: 5
 
   db:
     container_name: ridequest_db
