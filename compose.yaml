@@ -39,7 +39,7 @@ services:
     healthcheck:
       test: [CMD, curl, -s, -f, "http://localhost:5174/api/v1/healthcheck"]
       interval: 5s
-      timeout: 50s
+      timeout: 60s
       retries: 5
 
   db:
