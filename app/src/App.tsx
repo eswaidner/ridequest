@@ -16,18 +16,34 @@ const authUrl = `https://www.strava.com/oauth/authorize?${authQueryParams}`;
 
 export default function App() {
   useEffect(() => {
-    const init = async () => {
-      const resp = await fetch(`${API_URL}/auth/login`, {
+    let authCode: string;
+    const queryParams = window.location.search.slice(1).split("&");
+    for (const p of queryParams) {
+      const elems = p.split("=");
+      if (elems[0] == "code") authCode = elems[1];
+    }
+
+    const login = async () => {
+      if (!authCode) return;
+
+      //TODO check auth scope and redirect if invalid
+
+      await fetch(`${API_URL}/auth/login`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ auth_code: "test" }),
+        body: JSON.stringify({ auth_code: authCode }),
       });
 
-      console.log(await resp.json());
+      //TEST
+      await fetch(`${API_URL}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
     };
-    void init();
+    void login();
   }, []);
 
   return (

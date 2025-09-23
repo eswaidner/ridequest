@@ -10,6 +10,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
+use axum_extra::extract::{CookieJar, cookie::Cookie};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -59,6 +60,7 @@ async fn main() {
     let app = Router::new()
         .route(&path("/healthcheck"), get(healthcheck_handler))
         .route(&path("/auth/login"), post(login_handler))
+        .route(&path("/auth/logout"), post(logout_handler))
         .with_state(state)
         .layer(cors);
 
@@ -75,22 +77,48 @@ async fn healthcheck_handler() -> impl IntoResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LoginRequest {
-    auth_code: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct LoginResponse {
-    session_id: Uuid,
+    auth_code: Option<String>,
 }
 
 async fn login_handler(
     State(state): State<Arc<AppState>>,
+    jar: CookieJar,
     Json(body): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    println!("AUTH CODE: {}", body.auth_code);
-    return Ok(Json::from(LoginResponse {
-        session_id: Uuid::nil(),
-    }));
+    //TODO if auth_code, get tokens from strava
+
+    if let Some(auth_code) = body.auth_code {
+        println!("AUTH CODE: {}", auth_code);
+        //TODO get or create session in db
+    } else {
+        //TODO get session in db
+    }
+
+    // return session uuid
+
+    let session_id = Uuid::nil();
+
+    let session_cookie = Cookie::build(Cookie::new("session", session_id.to_string()))
+        .domain("localhost:5714")
+        .http_only(true)
+        .same_site(axum_extra::extract::cookie::SameSite::None)
+        .secure(false); // FOR LOCAL DEV ONLY
+
+    let new_jar = jar.add(session_cookie);
+
+    return Ok(new_jar);
+}
+
+async fn logout_handler(State(state): State<Arc<AppState>>, jar: CookieJar) -> impl IntoResponse {
+    if let Some(cookie) = jar.get("session") {
+        println!("Logout Session: {}", cookie.value());
+    } else {
+        println!("no session cookie");
+    }
+
+    let new_jar = jar.remove("session");
+
+    return new_jar;
 }
 
 fn path(path: &str) -> String {

@@ -40,7 +40,7 @@ services:
       test: [CMD, curl, -s, -f, "http://localhost:5174/api/v1/healthcheck"]
       interval: 5s
       timeout: 60s
-      retries: 5
+      retries: 10
 
   db:
     container_name: ridequest_db
