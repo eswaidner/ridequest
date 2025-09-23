@@ -99,10 +99,8 @@ async fn login_handler(
     let session_id = Uuid::nil();
 
     let session_cookie = Cookie::build(Cookie::new("session", session_id.to_string()))
-        .domain("localhost:5714")
         .http_only(true)
-        .same_site(axum_extra::extract::cookie::SameSite::None)
-        .secure(false); // FOR LOCAL DEV ONLY
+        .same_site(axum_extra::extract::cookie::SameSite::None);
 
     let new_jar = jar.add(session_cookie);
 
@@ -110,13 +108,14 @@ async fn login_handler(
 }
 
 async fn logout_handler(State(state): State<Arc<AppState>>, jar: CookieJar) -> impl IntoResponse {
+    let mut new_jar = jar.clone();
+
     if let Some(cookie) = jar.get("session") {
         println!("Logout Session: {}", cookie.value());
+        new_jar = jar.remove("session");
     } else {
         println!("no session cookie");
     }
-
-    let new_jar = jar.remove("session");
 
     return new_jar;
 }
