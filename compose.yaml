@@ -10,9 +10,11 @@ services:
       - "5173"
     volumes:
       - ./app/src:/app/src
+    environment:
+      VITE_STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
     depends_on:
-      # api:
-      #  condition: service_healthy
+      api:
+        condition: service_healthy
       db:
         condition: service_healthy
 
@@ -23,11 +25,21 @@ services:
       context: ./api
     ports:
       - "5174:5174"
+    expose:
+      - "5174"
     volumes:
       - ./api/src:/api/src
+    environment:
+      STRAVA_CLIENT_ID: ${VITE_STRAVA_CLIENT_ID}
+      #TODO other env vars
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, -s, -f, "http://localhost:5174/api/v1/healthcheck"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
 
   db:
     container_name: ridequest_db

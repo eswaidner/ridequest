@@ -1,1 +1,5 @@
-
+.signIn {
+  color: var(--hl-1);
+  text-decoration: underline;
+  cursor: pointer;
+}

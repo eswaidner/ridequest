@@ -46,8 +46,6 @@ button {
   all: unset;
 }
 
-.clickable {
-}
-
-.clickable:hover {
+a {
+  all: unset;
 }
