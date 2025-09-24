@@ -181,7 +181,7 @@ async fn handle_login(
 
 // perform token exchange and upsert session into db
 async fn create_session(auth_code: &str, state: Arc<AppState>) -> Result<Uuid, reqwest::Error> {
-    let session_id = Uuid::new_v4();
+    let mut session_id = Uuid::new_v4();
 
     let token_exchange_body = json!({
         "client_id": &state.env.strava_client_id,
@@ -222,20 +222,20 @@ async fn create_session(auth_code: &str, state: Arc<AppState>) -> Result<Uuid, r
     let expires_at = DateTime::from_timestamp(auth_data.expires_at, 0).unwrap();
 
     // create or update session
-    sqlx::query("
+    session_id = sqlx::query_scalar("
             INSERT INTO session (uuid, athlete_id, refresh_token, access_token, access_expires_at, created_at)
             VALUES ($1, $2, $3, $4, $5, now())
             ON CONFLICT (athlete_id) DO UPDATE
-            SET uuid = EXCLUDED.uuid,
-                refresh_token = EXCLUDED.refresh_token,
+            SET refresh_token = EXCLUDED.refresh_token,
                 access_token = EXCLUDED.access_token,
                 access_expires_at = EXCLUDED.access_expires_at,
                 created_at = now()
+            RETURNING (uuid)
         ").bind(&session_id)
         .bind(auth_data.athlete.id)
         .bind(auth_data.refresh_token)
         .bind(auth_data.access_token)
-        .bind(expires_at).execute(&state.db).await.expect("Failed to create session");
+        .bind(expires_at).fetch_one(&state.db).await.expect("Failed to create session");
 
     return Ok(session_id);
 }
