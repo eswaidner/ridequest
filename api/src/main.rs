@@ -198,16 +198,22 @@ async fn login_handler(
 }
 
 async fn logout_handler(State(state): State<Arc<AppState>>, jar: CookieJar) -> impl IntoResponse {
-    let mut new_jar = jar.clone();
-
     if let Some(cookie) = jar.get("session") {
         println!("Logout Session: {}", cookie.value());
-        new_jar = jar.remove("session");
+
+        let session_id = Some(Uuid::from_str(cookie.value()).expect("Invalid session uuid"));
+
+        sqlx::query("DELETE FROM session WHERE uuid = $1")
+            .bind(session_id)
+            .execute(&state.db)
+            .await
+            .expect("Failed to delete session");
+
+        return jar.remove("session");
     } else {
         println!("no session cookie");
+        return jar;
     }
-
-    return new_jar;
 }
 
 fn path(path: &str) -> String {
