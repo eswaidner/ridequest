@@ -47,29 +47,57 @@ export default function App() {
     void login();
   }, []);
 
-  console.log(loggedIn);
-
   return (
-    <div>
+    <div className={css.app}>
+      <img
+        src="./ridequest.png"
+        alt="RideQuest logo"
+        width={100}
+        height={100}
+      ></img>
       {loggedIn ? (
-        <button
-          className={css.logOut}
-          onClick={async () => {
-            await fetch(`${API_URL}/auth/logout`, {
-              method: "POST",
-              credentials: "include",
-            });
-
+        <LogOutButton
+          onClick={() => {
             setLoggedIn(false);
           }}
-        >
-          Log Out
-        </button>
+        />
       ) : (
-        <a href={authUrl} className={css.logIn}>
-          Log in with Strava
-        </a>
+        <LogInButton />
       )}
     </div>
+  );
+}
+
+function LogInButton() {
+  return (
+    <a href={authUrl} className={css.logInOutButton}>
+      Log in with Strava
+    </a>
+  );
+}
+
+interface LogOutButtonProps {
+  onClick?: () => void;
+}
+
+function LogOutButton({ onClick }: LogOutButtonProps) {
+  return (
+    <button
+      className={css.logInOutButton}
+      onClick={() => {
+        fetch(`${API_URL}/auth/logout`, {
+          method: "POST",
+          credentials: "include",
+        })
+          .then(() => {
+            onClick?.();
+          })
+          .catch(() => {
+            console.log("ERROR: failed to log in");
+          });
+      }}
+    >
+      Log Out
+    </button>
   );
 }

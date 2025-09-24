@@ -31,6 +31,12 @@ ul {
 img {
   max-width: 100%;
   height: auto;
+  display: block;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
@@ -38,8 +44,6 @@ body {
   background-color: var(--bg-0);
   color: var(--fg-1);
   overflow-y: auto;
-  display: flex;
-  min-height: 100vh;
 }
 
 button {
@@ -48,4 +52,7 @@ button {
 
 a {
   all: unset;
+}
+
+#root {
 }

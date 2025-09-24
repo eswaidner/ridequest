@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::{io::Error, str::FromStr, sync::Arc};
 
 use axum::{
     Json, Router,
@@ -23,6 +23,14 @@ const API_PREFIX: &str = "/api/v1";
 // global app state
 struct AppState {
     db: PgPool,
+    http: reqwest::Client,
+    env: Environment,
+}
+
+struct Environment {
+    strava_client_id: i32,
+    strava_client_secret: String,
+    db_url: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
@@ -41,15 +49,26 @@ struct Athlete {
 
 #[tokio::main]
 async fn main() {
-    let db_url = std::env::var("DATABASE_URL").expect("database url is not set");
+    let env = Environment {
+        strava_client_id: from_str::<i32>(
+            &std::env::var("STRAVA_CLIENT_ID").expect("STRAVA_CLIENT_ID is unset"),
+        )
+        .unwrap(),
+        strava_client_secret: std::env::var("STRAVA_CLIENT_SECRET")
+            .expect("STRAVA_CLIENT_SECRET is unset"),
+        db_url: std::env::var("DATABASE_URL").expect("database url is not set"),
+    };
+
     let db_pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&db_url)
+        .connect(&env.db_url)
         .await
         .expect("failed to connect to database");
 
     let state = Arc::new(AppState {
         db: db_pool.clone(),
+        http: reqwest::Client::new(),
+        env: env,
     });
 
     let cors = CorsLayer::new()
@@ -60,8 +79,8 @@ async fn main() {
 
     let app = Router::new()
         .route(&path("/healthcheck"), get(healthcheck_handler))
-        .route(&path("/auth/login"), post(login_handler))
-        .route(&path("/auth/logout"), post(logout_handler))
+        .route(&path("/auth/login"), post(handle_login))
+        .route(&path("/auth/logout"), post(handle_logout))
         .with_state(state)
         .layer(cors);
 
@@ -100,104 +119,108 @@ struct AthleteSummary {
     profile_medium: String,
 }
 
-async fn login_handler(
+async fn handle_login(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     Json(body): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let mut session_id: Option<Uuid> = None;
-
-    if let Some(auth_code) = body.auth_code {
-        println!("AUTH CODE: {}", auth_code);
-
-        let client = reqwest::Client::new();
-
-        let client_id =
-            from_str::<i32>(&std::env::var("STRAVA_CLIENT_ID").expect("CLIENT_ID is unset"))
-                .unwrap();
-
-        let body = json!({
-            "client_id": client_id,
-            "client_secret": std::env::var("STRAVA_CLIENT_SECRET").expect("CLIENT_SECRET is unset"),
-            "code": auth_code,
-            "grant_type": "authorization_code",
-        });
-
-        let resp = client
-            .post("https://www.strava.com/api/v3/oauth/token")
-            .json(&body)
-            .send()
-            .await
-            .expect("failed to get tokens from strava");
-
-        if resp.status().is_success() {
-            let authData: StravaAuthResponse = resp.json().await.unwrap();
-            println!("STRAVA: {:?}", authData);
-
-            // create athlete if not exists
-            sqlx::query(
-                "
-                INSERT INTO athlete (id, username, created_at, updated_at)
-                VALUES ($1, $2, now(), now())
-                ON CONFLICT (id) DO NOTHING
-            ",
-            )
-            .bind(authData.athlete.id)
-            .bind(authData.athlete.username)
-            .execute(&state.db)
-            .await
-            .expect("Failed to create athlete");
-
-            let expires_at = DateTime::from_timestamp(authData.expires_at, 0).unwrap();
-
-            session_id = Some(Uuid::new_v4());
-
-            // create session
-            sqlx::query("
-                INSERT INTO session (uuid, athlete_id, refresh_token, access_token, access_expires_at, created_at)
-                VALUES ($1, $2, $3, $4, $5, now())
-                ON CONFLICT (athlete_id) DO UPDATE
-                SET uuid = EXCLUDED.uuid,
-                    refresh_token = EXCLUDED.refresh_token,
-                    access_token = EXCLUDED.access_token,
-                    access_expires_at = EXCLUDED.access_expires_at,
-                    created_at = now()
-            ").bind(session_id.clone().unwrap())
-            .bind(authData.athlete.id)
-            .bind(authData.refresh_token)
-            .bind(authData.access_token)
-            .bind(expires_at).execute(&state.db).await.expect("Failed to create session");
-        } else {
-            if let Err(e) = resp.error_for_status() {
-                eprintln!("TOKEN EXCHANGE ERROR: {}", e);
-            }
-        }
-    } else if let Some(c) = jar.get("session") {
+    // handle existing session
+    if let Some(c) = jar.get("session") {
         // get session in db
         // let result: (String, String, DateTime<Utc>) =
         //     sqlx::query_as("SELECT (refresh_token, access_token, access_expires_at) FROM session WHERE session.uuid = $1")
         //     .bind(c.value()).fetch_one(&state.db).await.expect("Failed to get session");
 
-        //TODO handle invalid session uuid with bad request error
-        session_id = Some(Uuid::from_str(c.value()).expect("Invalid session uuid"));
+        // bad request if session id is invalid
+        //TODO only bad request if auth code was not provided
+        return match Uuid::from_str(c.value()) {
+            Ok(_) => Ok(jar),
+            Err(_) => Err(StatusCode::BAD_REQUEST),
+        };
     }
 
-    // return session uuid
+    // bad request if no existing session or auth code provided
+    let auth_code = match body.auth_code {
+        Some(code) => code,
+        None => return Err(StatusCode::BAD_REQUEST),
+    };
 
-    if let Some(id) = session_id {
-        let session_cookie = Cookie::build(Cookie::new("session", id.to_string()))
-            .http_only(true)
-            .same_site(axum_extra::extract::cookie::SameSite::None);
+    // create a new session
+    let session_id = create_session(&auth_code, state)
+        .await
+        .expect("Failed to create session");
 
-        let new_jar = jar.add(session_cookie);
+    // return session uuid as http-only cookie
+    let session_cookie = Cookie::build(Cookie::new("session", session_id.to_string()))
+        .http_only(true)
+        .same_site(axum_extra::extract::cookie::SameSite::None);
 
-        return Ok(new_jar);
-    } else {
-        return Err(StatusCode::BAD_REQUEST);
-    }
+    let new_jar = jar.add(session_cookie);
+
+    return Ok(new_jar);
 }
 
-async fn logout_handler(State(state): State<Arc<AppState>>, jar: CookieJar) -> impl IntoResponse {
+async fn create_session(auth_code: &str, state: Arc<AppState>) -> Result<Uuid, reqwest::Error> {
+    let session_id = Uuid::new_v4();
+
+    let token_exchange_body = json!({
+        "client_id": &state.env.strava_client_id,
+        "client_secret": &state.env.strava_client_secret,
+        "code": auth_code,
+        "grant_type": "authorization_code",
+    });
+
+    let token_exchange_resp = state
+        .http
+        .post("https://www.strava.com/api/v3/oauth/token")
+        .json(&token_exchange_body)
+        .send()
+        .await
+        .expect("failed to get tokens from strava");
+
+    let resp = match token_exchange_resp.error_for_status() {
+        Ok(resp) => resp,
+        Err(e) => return Err(e),
+    };
+
+    let auth_data: StravaAuthResponse = resp.json().await.unwrap();
+
+    // create athlete if not exists
+    sqlx::query(
+        "
+                INSERT INTO athlete (id, username, created_at, updated_at)
+                VALUES ($1, $2, now(), now())
+                ON CONFLICT (id) DO NOTHING
+            ",
+    )
+    .bind(auth_data.athlete.id)
+    .bind(auth_data.athlete.username)
+    .execute(&state.db)
+    .await
+    .expect("Failed to create athlete");
+
+    let expires_at = DateTime::from_timestamp(auth_data.expires_at, 0).unwrap();
+
+    // create session
+    sqlx::query("
+            INSERT INTO session (uuid, athlete_id, refresh_token, access_token, access_expires_at, created_at)
+            VALUES ($1, $2, $3, $4, $5, now())
+            ON CONFLICT (athlete_id) DO UPDATE
+            SET uuid = EXCLUDED.uuid,
+                refresh_token = EXCLUDED.refresh_token,
+                access_token = EXCLUDED.access_token,
+                access_expires_at = EXCLUDED.access_expires_at,
+                created_at = now()
+        ").bind(&session_id)
+        .bind(auth_data.athlete.id)
+        .bind(auth_data.refresh_token)
+        .bind(auth_data.access_token)
+        .bind(expires_at).execute(&state.db).await.expect("Failed to create session");
+
+    return Ok(session_id);
+}
+
+async fn handle_logout(State(state): State<Arc<AppState>>, jar: CookieJar) -> impl IntoResponse {
     if let Some(cookie) = jar.get("session") {
         println!("Logout Session: {}", cookie.value());
 

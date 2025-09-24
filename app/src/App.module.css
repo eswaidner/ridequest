@@ -1,10 +1,13 @@
-.logIn {
-  color: var(--hl-1);
-  text-decoration: underline;
-  cursor: pointer;
+.app {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+  row-gap: 15px;
 }
 
-.logOut {
+.logInOutButton {
   color: var(--hl-1);
   border: 1px solid var(--hl-1);
   border-radius: 3px;
