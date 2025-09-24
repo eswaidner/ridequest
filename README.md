@@ -25,3 +25,7 @@ Extremely bare-bones front end GUI supporting Strava authentication flow. Back e
 ### Next Steps
 
 Fetch/aggregate activity statistics for a logged in athlete and serve quest/stat progress data to the front end for visualization.
+
+### Other
+
+[Digital Whiteboard](https://excalidraw.com/#json=uJ3ZwWxLOjOtdyRgy9Rzk,QFb39OA1ewafQDF0ei7kbw) snapshot used during development
