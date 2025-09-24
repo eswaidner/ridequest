@@ -1,5 +1,13 @@
-.signIn {
+.logIn {
   color: var(--hl-1);
   text-decoration: underline;
   cursor: pointer;
+}
+
+.logOut {
+  color: var(--hl-1);
+  border: 1px solid var(--hl-1);
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 5px 9px;
 }

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import css from "./App.module.css";
 
 const ENV = import.meta.env;
@@ -15,6 +15,8 @@ const authQueryParams = [
 const authUrl = `https://www.strava.com/oauth/authorize?${authQueryParams}`;
 
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState<boolean>(false);
+
   useEffect(() => {
     let authCode: string;
     const queryParams = window.location.search.slice(1).split("&");
@@ -29,7 +31,7 @@ export default function App() {
     const login = async () => {
       if (!authCode) return;
 
-      //TODO check auth scope and redirect if invalid
+      //TODO check auth scopes and redirect if invalid
 
       await fetch(`${API_URL}/auth/login`, {
         method: "POST",
@@ -40,20 +42,34 @@ export default function App() {
         body: JSON.stringify({ auth_code: authCode }),
       });
 
-      //TEST
-      await fetch(`${API_URL}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      setLoggedIn(true);
     };
     void login();
   }, []);
 
+  console.log(loggedIn);
+
   return (
     <div>
-      <a href={authUrl} className={css.signIn}>
-        Log in with Strava
-      </a>
+      {loggedIn ? (
+        <button
+          className={css.logOut}
+          onClick={async () => {
+            await fetch(`${API_URL}/auth/logout`, {
+              method: "POST",
+              credentials: "include",
+            });
+
+            setLoggedIn(false);
+          }}
+        >
+          Log Out
+        </button>
+      ) : (
+        <a href={authUrl} className={css.logIn}>
+          Log in with Strava
+        </a>
+      )}
     </div>
   );
 }

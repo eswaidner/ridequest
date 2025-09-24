@@ -1,10 +1,10 @@
 -- Add up migration script here
 
 CREATE TABLE IF NOT EXISTS athlete (
-    id SERIAL PRIMARY KEY,
+    id BIGINT PRIMARY KEY,
     username TEXT,
-    created_at DATE,
-    updated_at DATE,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
     max_speed REAL,
     max_power REAL,
     max_cadence REAL,
@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS athlete (
 );
 
 CREATE TABLE IF NOT EXISTS session (
-    uuid UUID PRIMARY KEY,
-    athlete_id INT REFERENCES athlete (id),
+    athlete_id BIGINT PRIMARY KEY REFERENCES athlete (id),
+    uuid UUID UNIQUE,
     refresh_token TEXT,
     access_token TEXT,
-    access_expires_at DATE,
-    created_at DATE
+    access_expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ
 );
